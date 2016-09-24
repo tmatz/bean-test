@@ -7,7 +7,10 @@ import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.widget.EditText;
+import android.widget.TextView;
 
+import com.jakewharton.rxbinding.widget.RxTextView;
 import com.punchthrough.bean.sdk.Bean;
 import com.punchthrough.bean.sdk.BeanDiscoveryListener;
 import com.punchthrough.bean.sdk.BeanListener;
@@ -20,11 +23,15 @@ import com.punchthrough.bean.sdk.message.ScratchBank;
 import rx.Observable;
 import rx.Subscriber;
 import rx.Subscription;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.schedulers.Schedulers;
+import rx.subscriptions.CompositeSubscription;
 
 public class MainActivity extends AppCompatActivity {
 
     private static final int MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION = 1;
 
+    private CompositeSubscription mCompositeSubscription = new CompositeSubscription();
     private boolean mDiscoveryCompleted = true;
 
     private Observable<Bean> BeanDiscoveryListenerWrapper() {
@@ -58,6 +65,14 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         BeanManager.getInstance().setScanTimeout(10);
+
+        final EditText editText = (EditText) findViewById(R.id.editText);
+        final TextView textView = (TextView) findViewById(R.id.textView2);
+
+        RxTextView.afterTextChangeEvents(editText)
+                .map(event -> String.valueOf(event.editable().length()))
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(length -> textView.setText(String.valueOf(length)));
 
         if (ContextCompat.checkSelfPermission(
                 this,
@@ -115,11 +130,14 @@ public class MainActivity extends AppCompatActivity {
         mDiscoveryCompleted = false;
         mDiscoverySubscription = BeanDiscoveryListenerWrapper()
                 .distinct(bean -> bean.getDevice().getAddress())
+                .subscribeOn(Schedulers.io())
+                .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(bean -> {
                     System.out.println("onNext()");
                     System.out.println(bean.getDevice().getName());
                     System.out.println(bean.getDevice().getAddress());
                 });
+        mCompositeSubscription.add(mDiscoverySubscription);
     }
 
     private void StopDiscovery()
@@ -146,6 +164,7 @@ public class MainActivity extends AppCompatActivity {
         System.out.println("MainActivity.onDestroy()");
         super.onDestroy();
         StopDiscovery();
+        mCompositeSubscription.unsubscribe();
     }
 
     private void ShowBeanInfo(final Bean bean)

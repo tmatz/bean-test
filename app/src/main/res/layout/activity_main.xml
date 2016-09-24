@@ -11,17 +11,24 @@
     android:paddingTop="@dimen/activity_vertical_margin"
     tools:context="io.github.tmatz.beantest.MainActivity">
 
-    <TextView
+    <EditText
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Hello World!"
-        android:id="@+id/textView"/>
+        android:id="@+id/editText"/>
+
+    <TextView
+        android:text="TextView"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:id="@+id/textView2"
+        android:layout_below="@+id/editText"
+        android:layout_alignParentStart="true"/>
 
     <ListView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_below="@+id/textView"
-        android:layout_alignParentStart="true"
-        android:layout_marginTop="13dp"
-        android:id="@+id/list"/>
+        android:id="@+id/list"
+        android:layout_below="@+id/textView2"
+        android:layout_alignParentStart="true"/>
 </RelativeLayout>
