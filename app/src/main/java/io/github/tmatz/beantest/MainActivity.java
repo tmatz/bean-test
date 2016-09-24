@@ -3,6 +3,8 @@ package io.github.tmatz.beantest;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
+import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 
@@ -15,65 +17,135 @@ import com.punchthrough.bean.sdk.message.Callback;
 import com.punchthrough.bean.sdk.message.DeviceInfo;
 import com.punchthrough.bean.sdk.message.ScratchBank;
 
-import java.util.ArrayList;
-import java.util.List;
+import rx.Observable;
+import rx.Subscriber;
+import rx.Subscription;
 
 public class MainActivity extends AppCompatActivity {
 
-    private final List<Bean> mBean = new ArrayList<>();
-    private boolean mDiscoveryCompleted = true;
-    private final BeanDiscoveryListener mDiscoveryListener = new BeanDiscoveryListener() {
-        @Override
-        public void onBeanDiscovered(Bean bean, int rssi) {
-            System.out.println("BeanDiscoveryListener.onBeanDiscovered()");
-            mBean.add(bean);
-            ShowBeanInfo(bean);
-        }
+    private static final int MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION = 1;
 
-        @Override
-        public void onDiscoveryComplete() {
-            System.out.println("BeanDiscoveryListener.onDiscoveryComplete()");
-            mDiscoveryCompleted = true;
-            for (Bean bean: mBean)
-            {
-                System.out.println(bean.getDevice().getName());
-                System.out.println(bean.getDevice().getAddress());
+    private boolean mDiscoveryCompleted = true;
+
+    private Observable<Bean> BeanDiscoveryListenerWrapper() {
+        return Observable.create(new Observable.OnSubscribe<Bean>() {
+            @Override
+            public void call(final Subscriber<? super Bean> subscriber) {
+                mDiscoveryCompleted = false;
+                BeanDiscoveryListener listener = new BeanDiscoveryListener() {
+                    @Override
+                    public void onBeanDiscovered(Bean bean, int rssi) {
+                        System.out.println("BeanDiscoveryListener.onBeanDiscovered()");
+                        subscriber.onNext(bean);
+                    }
+
+                    @Override
+                    public void onDiscoveryComplete() {
+                        System.out.println("BeanDiscoveryListener.onDiscoveryComplete()");
+                        mDiscoveryCompleted = true;
+                        subscriber.onCompleted();
+                    }
+                };
+                BeanManager.getInstance().startDiscovery(listener);
             }
-            mBean.clear();
-        }
-    };
+        });
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         System.out.println("MainActivity.onCreate()");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
         BeanManager.getInstance().setScanTimeout(10);
+
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            System.out.println("ACCESS_COARSE_LOCATION is not granted.");
+
+            if (ActivityCompat.shouldShowRequestPermissionRationale(
+                    this, Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                //  show explanation.
+                System.out.println("need explanation.");
+                // TODO: do async
+                ActivityCompat.requestPermissions(
+                        this,
+                        new String[] { Manifest.permission.ACCESS_COARSE_LOCATION },
+                        MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION);
+            } else {
+                System.out.println("request permission.");
+                ActivityCompat.requestPermissions(
+                        this,
+                        new String[] { Manifest.permission.ACCESS_COARSE_LOCATION },
+                        MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION);
+            }
+        } else {
+            StartDiscovery();
+        }
     }
 
     @Override
     protected void onResume() {
         System.out.println("MainActivity.onResume()");
         super.onResume();
+    }
 
-        int grant = ContextCompat.checkSelfPermission(
-                getApplicationContext(),
-                Manifest.permission.ACCESS_COARSE_LOCATION);
-        if (grant == PackageManager.PERMISSION_GRANTED) {
-            mDiscoveryCompleted = false;
-            BeanManager.getInstance().startDiscovery(mDiscoveryListener);
-        } else {
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults) {
+        System.out.println("MainActivity.onRequestPermissionsResult()");
+        switch (requestCode) {
+            case MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION: {
+                if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    StartDiscovery();
+                }
+            }
+        }
+    }
+
+    private Subscription mDiscoverySubscription;
+
+    private void StartDiscovery()
+    {
+        System.out.println("MainActivity.StartDiscovery()");
+        mDiscoveryCompleted = false;
+        mDiscoverySubscription = BeanDiscoveryListenerWrapper()
+                .distinct(bean -> bean.getDevice().getAddress())
+                .subscribe(bean -> {
+                    System.out.println("onNext()");
+                    System.out.println(bean.getDevice().getName());
+                    System.out.println(bean.getDevice().getAddress());
+                });
+    }
+
+    private void StopDiscovery()
+    {
+        if (!mDiscoveryCompleted) {
+            BeanManager.getInstance().cancelDiscovery();
         }
 
+        if (mDiscoverySubscription != null)
+        {
+            mDiscoverySubscription.unsubscribe();
+            mDiscoverySubscription = null;
+        }
     }
 
     @Override
     protected void onPause() {
         System.out.println("MainActivity.onPause()");
         super.onPause();
-        if (!mDiscoveryCompleted) {
-            BeanManager.getInstance().cancelDiscovery();
-        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        System.out.println("MainActivity.onDestroy()");
+        super.onDestroy();
+        StopDiscovery();
     }
 
     private void ShowBeanInfo(final Bean bean)
