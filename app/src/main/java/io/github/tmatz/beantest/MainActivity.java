@@ -1,6 +1,7 @@
 package io.github.tmatz.beantest;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -8,12 +9,11 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.View;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.EditText;
 import android.widget.ListView;
-import android.widget.TextView;
 
-import com.jakewharton.rxbinding.widget.RxTextView;
 import com.punchthrough.bean.sdk.Bean;
 import com.punchthrough.bean.sdk.BeanDiscoveryListener;
 import com.punchthrough.bean.sdk.BeanListener;
@@ -30,7 +30,7 @@ import rx.schedulers.Schedulers;
 import rx.subscriptions.CompositeSubscription;
 
 public class MainActivity extends AppCompatActivity {
-    private static final String Tag = "MainActivity";
+    private static final String Tag = MainActivity.class.getSimpleName();
 
     private static final int MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION = 1;
 
@@ -47,13 +47,13 @@ public class MainActivity extends AppCompatActivity {
             BeanDiscoveryListener listener = new BeanDiscoveryListener() {
                 @Override
                 public void onBeanDiscovered(Bean bean, int rssi) {
-                    Log.i(Tag, "BeanDiscoveryListener.onBeanDiscovered()");
+                    Log.v(Tag, "BeanDiscoveryListener.onBeanDiscovered()");
                     observer.onNext(bean);
                 }
 
                 @Override
                 public void onDiscoveryComplete() {
-                    Log.i(Tag, "BeanDiscoveryListener.onDiscoveryComplete()");
+                    Log.v(Tag, "BeanDiscoveryListener.onDiscoveryComplete()");
                     mDiscoveryCompleted = true;
                     observer.onCompleted();
                 }
@@ -63,20 +63,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
+    protected void onStart() {
+        Log.v(Tag, "onStart()");
+        super.onStart();
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
-        Log.i(Tag, "MainActivity.onCreate()");
+        Log.v(Tag, "onCreate()");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
         BeanManager.getInstance().setScanTimeout(10);
-
-        final EditText editText = (EditText) findViewById(R.id.editText);
-        final TextView textView = (TextView) findViewById(R.id.textView2);
-
-        RxTextView.afterTextChangeEvents(editText)
-                .map(event -> String.valueOf(event.editable().length()))
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(length -> textView.setText(String.valueOf(length)));
 
         setupListView();
 
@@ -84,19 +82,19 @@ public class MainActivity extends AppCompatActivity {
                 this,
                 Manifest.permission.ACCESS_COARSE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
-            Log.i(Tag, "ACCESS_COARSE_LOCATION is not granted.");
+            Log.v(Tag, "ACCESS_COARSE_LOCATION is not granted.");
 
             if (ActivityCompat.shouldShowRequestPermissionRationale(
                     this, Manifest.permission.ACCESS_COARSE_LOCATION)) {
                 //  show explanation.
-                Log.i(Tag, "need explanation.");
+                Log.v(Tag, "need explanation.");
                 // TODO: do async
                 ActivityCompat.requestPermissions(
                         this,
                         new String[] { Manifest.permission.ACCESS_COARSE_LOCATION },
                         MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION);
             } else {
-                Log.i(Tag, "request permission.");
+                Log.v(Tag, "request permission.");
                 ActivityCompat.requestPermissions(
                         this,
                         new String[] { Manifest.permission.ACCESS_COARSE_LOCATION },
@@ -113,11 +111,21 @@ public class MainActivity extends AppCompatActivity {
         mBeans = new ArrayList<>();
         mAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, mBeans);
         mListView.setAdapter(mAdapter);
+
+        mListView.setOnItemClickListener(new AdapterView.OnItemClickListener()
+        {
+            @Override
+            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+                Intent intent = new Intent(MainActivity.this, DetailActivity.class);
+                intent.putExtra(Intent.EXTRA_TEXT, mBeans.get(position).getDevice().getAddress());
+                startActivity(intent);
+            }
+        });
     }
 
     @Override
     protected void onResume() {
-        Log.i(Tag, "MainActivity.onResume()");
+        Log.v(Tag, "onResume()");
         super.onResume();
     }
 
@@ -126,7 +134,7 @@ public class MainActivity extends AppCompatActivity {
             int requestCode,
             @NonNull String[] permissions,
             @NonNull int[] grantResults) {
-        Log.i(Tag, "MainActivity.onRequestPermissionsResult()");
+        Log.v(Tag, "onRequestPermissionsResult()");
         switch (requestCode) {
             case MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION: {
                 if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -140,19 +148,17 @@ public class MainActivity extends AppCompatActivity {
 
     private void StartDiscovery()
     {
-        Log.i(Tag, "MainActivity.StartDiscovery()");
+        Log.v(Tag, "StartDiscovery()");
         mDiscoveryCompleted = false;
         mDiscoverySubscription = BeanDiscoveryListenerWrapper()
                 .distinct(bean -> bean.getDevice().getAddress())
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(bean -> {
-                    Log.i(Tag, "onNext()");
-                    Log.i(Tag, bean.getDevice().getName());
-                    Log.i(Tag, bean.getDevice().getAddress());
+                    Log.v(Tag, "Bean found: " + bean.describe());
                     mBeans.add(bean);
                     mAdapter.notifyDataSetChanged();
-                    ShowBeanInfo(bean);
+                    // ShowBeanInfo(bean);
                 });
         mCompositeSubscription.add(mDiscoverySubscription);
     }
@@ -172,16 +178,22 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onPause() {
-        Log.i(Tag, "MainActivity.onPause()");
+        Log.v(Tag, "onPause()");
         super.onPause();
     }
 
     @Override
-    protected void onDestroy() {
-        Log.i(Tag, "MainActivity.onDestroy()");
-        super.onDestroy();
+    protected void onStop() {
+        Log.v(Tag, "onStop()");
         StopDiscovery();
         mCompositeSubscription.unsubscribe();
+        super.onStop();
+    }
+
+    @Override
+    protected void onDestroy() {
+        Log.v(Tag, "onDestroy()");
+        super.onDestroy();
     }
 
     private static class BeanEvent {
