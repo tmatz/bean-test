@@ -1,6 +1,7 @@
 package io.github.tmatz.beantest;
 
 import android.content.Intent;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
@@ -22,11 +23,19 @@ import org.apache.commons.io.IOUtils;
 import java.io.InputStream;
 import java.util.Collection;
 
+import rx.Subscription;
+import rx.android.schedulers.AndroidSchedulers;
+import rx.subscriptions.CompositeSubscription;
+
 public class DetailActivity extends AppCompatActivity {
 
     private static final String Tag = DetailActivity.class.getSimpleName();
 
     private Bean mBean;
+    private CompositeSubscription mCompositeSubscription = new CompositeSubscription();
+    private Subscription mConnectionSubscription;
+    private Button mButtonUploadSketch;
+    private TextView mTextViewBeanName;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,14 +72,15 @@ public class DetailActivity extends AppCompatActivity {
             Log.d(Tag, "Bean is not found.");
         }
 
+        mTextViewBeanName = (TextView)findViewById(R.id.bean_name);
+        mButtonUploadSketch = (Button)findViewById(R.id.action_upload_bean);
+        mButtonUploadSketch.setEnabled(false);
+
         if (mBean != null) {
-
-            TextView textViewBeanName = (TextView)findViewById(R.id.bean_name);
             Log.d(Tag, "Bean name: " + mBean.getDevice().getName());
-            textViewBeanName.setText(mBean.getDevice().getName());
+            mTextViewBeanName.setText(mBean.getDevice().getName());
 
-            Button buttonUploadSketch = (Button)findViewById(R.id.action_upload_bean);
-            buttonUploadSketch.setOnClickListener(new View.OnClickListener() {
+            mButtonUploadSketch.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     try {
@@ -95,12 +105,54 @@ public class DetailActivity extends AppCompatActivity {
                     }
                 }
             });
+
+            StartConnection(mBean);
         }
+    }
+
+    private void StartConnection(Bean bean)
+    {
+        if (mConnectionSubscription != null) {
+            mConnectionSubscription.unsubscribe();
+            mConnectionSubscription = null;
+        }
+
+        mConnectionSubscription = BeanConnect.ConnectToBean(getApplicationContext(), bean)
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe(
+                        event -> {
+                            switch (event.getEventType()) {
+                                case BeanConnect.BeanEvent.INFO_CONNECTED:
+                                    mButtonUploadSketch.setEnabled(true);
+                                    break;
+
+                                case BeanConnect.BeanEvent.INFO_READ_REMOTE_RSSI:
+                                    break;
+
+                                case BeanConnect.BeanEvent.INFO_SCRATCH_VALUE_CHANGED:
+                                    break;
+
+                                case BeanConnect.BeanEvent.INFO_SERIAL_MESSAGE_RECEIVED:
+                                    break;
+                            }
+                        },
+                        error -> {
+                            mTextViewBeanName.setBackgroundColor(Color.RED);
+                        },
+                        () -> {
+
+                        });
     }
 
     @Override
     protected void onStart() {
         Log.v(Tag, "onStart");
         super.onStart();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        mCompositeSubscription.unsubscribe();
     }
 }

@@ -12,16 +12,12 @@ import com.punchthrough.bean.sdk.message.ScratchBank;
 
 import rx.AsyncEmitter;
 import rx.Observable;
-import rx.Subscriber;
-import rx.Subscription;
 
 public class BeanConnect {
     private static final String Tag = BeanConnect.class.getSimpleName();
 
-    private Subscription mDiscoverySubscription;
-
     public static Observable<Bean> DiscoverBeans() {
-        Observable<Bean> observable = Observable.fromEmitter(
+        return Observable.fromEmitter(
                 emitter -> {
                     BeanDiscoveryListener listener = new BeanDiscoveryListener() {
                         @Override
@@ -43,8 +39,6 @@ public class BeanConnect {
 
                     BeanManager.getInstance().startDiscovery(listener);
                 }, AsyncEmitter.BackpressureMode.BUFFER);
-
-        return observable.publish().refCount();
     }
 
     public static class BeanEvent {
@@ -151,75 +145,61 @@ public class BeanConnect {
         }
     }
 
-    private static class MyBeanListener implements BeanListener
-    {
-        private final Bean mBean;
-        private Subscriber<? super BeanEvent> observer;
-
-        public MyBeanListener(Bean bean) {
-            mBean = bean;
-        }
-
-        public void start(Context context, Subscriber<? super BeanEvent> subscriber) {
-            this.observer = subscriber;
-            mBean.connect(context, this);
-        }
-
-        public void cancel() {
-            mBean.disconnect();
-        }
-
-        @Override
-        public void onConnected() {
-            Log.i(Tag, "BeanListener.onConnected()");
-            observer.onNext(BeanEvent.OnConnected(mBean));
-        }
-
-        @Override
-        public void onConnectionFailed() {
-            Log.i(Tag, "BeanListener.onConnectionFailed()");
-            observer.onError(new BeanConnectionFailedException(mBean));
-        }
-
-        @Override
-        public void onDisconnected() {
-            Log.i(Tag, "BeanListener.onDiscconnected()");
-            observer.onCompleted();
-        }
-
-        @Override
-        public void onSerialMessageReceived(byte[] data) {
-            Log.i(Tag, "BeanListener.onSerialMessageReceived()");
-            observer.onNext(BeanEvent.OnSerialMessageReceived(mBean, data));
-        }
-
-        @Override
-        public void onScratchValueChanged(ScratchBank bank, byte[] value) {
-            Log.i(Tag, "BeanListener.onScratchValueChanged()");
-            observer.onNext(BeanEvent.OnScratchValueChanged(mBean, bank, value));
-        }
-
-        @Override
-        public void onError(BeanError error) {
-            Log.i(Tag, "BeanListener.onError()");
-            observer.onError(new BeanErrorException(mBean, error));
-        }
-
-        @Override
-        public void onReadRemoteRssi(int rssi) {
-            Log.i(Tag, "BeanListener.onReadRemoteRssi()");
-            observer.onNext(BeanEvent.OnReadRemoteRssi(mBean, rssi));
-        }
-    }
-
     public static Observable<BeanEvent> ConnectToBean(Context context, Bean bean)
     {
-        return Observable.using(
-                () -> new MyBeanListener(bean),
-                (listener) ->
-                    Observable.create(subscriber -> {
-                        listener.start(context, subscriber);
-                    }),
-                (listener) -> listener.cancel());
+        return Observable.fromEmitter(
+                emitter -> {
+                    BeanListener listener = new BeanListener() {
+                        @Override
+                        public void onConnected() {
+                            Log.v(Tag, "BeanListener.onConnected()");
+                            emitter.onNext(BeanEvent.OnConnected(bean));
+                        }
+
+                        @Override
+                        public void onConnectionFailed() {
+                            Log.v(Tag, "BeanListener.onConnectionFailed()");
+                            emitter.onError(new BeanConnectionFailedException(bean));
+                        }
+
+                        @Override
+                        public void onDisconnected() {
+                            Log.v(Tag, "BeanListener.onDiscconnected()");
+                            emitter.onCompleted();
+                        }
+
+                        @Override
+                        public void onSerialMessageReceived(byte[] data) {
+                            Log.v(Tag, "BeanListener.onSerialMessageReceived()");
+                            emitter.onNext(BeanEvent.OnSerialMessageReceived(bean, data));
+                        }
+
+                        @Override
+                        public void onScratchValueChanged(ScratchBank bank, byte[] value) {
+                            Log.v(Tag, "BeanListener.onScratchValueChanged()");
+                            emitter.onNext(BeanEvent.OnScratchValueChanged(bean, bank, value));
+                        }
+
+                        @Override
+                        public void onError(BeanError error) {
+                            Log.v(Tag, "BeanListener.onError()");
+                            emitter.onError(new BeanErrorException(bean, error));
+                        }
+
+                        @Override
+                        public void onReadRemoteRssi(int rssi) {
+                            Log.v(Tag, "BeanListener.onReadRemoteRssi()");
+                            emitter.onNext(BeanEvent.OnReadRemoteRssi(bean, rssi));
+                        }
+                    };
+
+                    bean.connect(context, listener);
+
+                    emitter.setCancellation(
+                            () -> {
+                                bean.disconnect();
+                            });
+
+                }, AsyncEmitter.BackpressureMode.BUFFER);
     }
 }

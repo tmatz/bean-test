@@ -9,6 +9,8 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
@@ -22,7 +24,6 @@ import java.util.ArrayList;
 import rx.Observable;
 import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
 import rx.subscriptions.CompositeSubscription;
 
 public class MainActivity extends AppCompatActivity {
@@ -34,6 +35,7 @@ public class MainActivity extends AppCompatActivity {
     private ListView mListView;
     private ArrayList<Bean> mBeans;
     private ArrayAdapter<Bean> mAdapter;
+    private Subscription mDiscoverySubscription;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +58,25 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra(Intent.EXTRA_TEXT, mBeans.get(position).getDevice().getAddress());
             startActivity(intent);
         });
+    }
+
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        Log.v(Tag, "onCreateOptionsMenu()");
+        getMenuInflater().inflate(R.menu.menu_main, menu);
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        Log.v(Tag, "onOptionsItemSelected()");
+        int itemId = item.getItemId();
+        if (itemId == R.id.action_refresh) {
+            StartDiscovery();
+            return true;
+        } else {
+            return super.onOptionsItemSelected(item);
+        }
     }
 
     @Override
@@ -115,9 +136,16 @@ public class MainActivity extends AppCompatActivity {
     {
         Log.v(Tag, "StartDiscovery()");
 
-        Subscription subscription = BeanConnect.DiscoverBeans()
+        if (mDiscoverySubscription != null) {
+            mDiscoverySubscription.unsubscribe();
+            mCompositeSubscription.remove(mDiscoverySubscription);
+        }
+
+        mBeans.clear();
+        mAdapter.notifyDataSetChanged();
+
+        mDiscoverySubscription = BeanConnect.DiscoverBeans()
                 .distinct(bean -> bean.getDevice().getAddress())
-                .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(bean -> {
                     Log.v(Tag, "Bean found: " + bean.describe());
@@ -125,7 +153,7 @@ public class MainActivity extends AppCompatActivity {
                     mAdapter.notifyDataSetChanged();
                 });
 
-        mCompositeSubscription.add(subscription);
+        mCompositeSubscription.add(mDiscoverySubscription);
     }
     
     @Override
