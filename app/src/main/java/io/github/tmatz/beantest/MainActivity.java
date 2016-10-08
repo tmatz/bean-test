@@ -9,15 +9,11 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
-import android.view.View;
-import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
 import com.punchthrough.bean.sdk.Bean;
-import com.punchthrough.bean.sdk.BeanDiscoveryListener;
 import com.punchthrough.bean.sdk.BeanListener;
-import com.punchthrough.bean.sdk.BeanManager;
 import com.punchthrough.bean.sdk.message.BeanError;
 import com.punchthrough.bean.sdk.message.ScratchBank;
 
@@ -35,30 +31,30 @@ public class MainActivity extends AppCompatActivity {
     private static final int MY_PERMISSIONS_REQUEST_ACCESS_COARSE_LOCATION = 1;
 
     private CompositeSubscription mCompositeSubscription = new CompositeSubscription();
-    private boolean mDiscoveryCompleted = true;
     private ListView mListView;
     private ArrayList<Bean> mBeans;
     private ArrayAdapter<Bean> mAdapter;
 
-    private Observable<Bean> BeanDiscoveryListenerWrapper() {
-        return Observable.create(observer ->
-        {
-            mDiscoveryCompleted = false;
-            BeanDiscoveryListener listener = new BeanDiscoveryListener() {
-                @Override
-                public void onBeanDiscovered(Bean bean, int rssi) {
-                    Log.v(Tag, "BeanDiscoveryListener.onBeanDiscovered()");
-                    observer.onNext(bean);
-                }
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        Log.v(Tag, "onCreate()");
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+        // BeanManager.getInstance().setScanTimeout(10);
+        setupListView();
+    }
 
-                @Override
-                public void onDiscoveryComplete() {
-                    Log.v(Tag, "BeanDiscoveryListener.onDiscoveryComplete()");
-                    mDiscoveryCompleted = true;
-                    observer.onCompleted();
-                }
-            };
-            BeanManager.getInstance().startDiscovery(listener);
+    private void setupListView()
+    {
+        mListView = (ListView)findViewById(R.id.list);
+        mBeans = new ArrayList<>();
+        mAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, mBeans);
+        mListView.setAdapter(mAdapter);
+
+        mListView.setOnItemClickListener((parent, view, position, id) -> {
+            Intent intent = new Intent(MainActivity.this, DetailActivity.class);
+            intent.putExtra(Intent.EXTRA_TEXT, mBeans.get(position).getDevice().getAddress());
+            startActivity(intent);
         });
     }
 
@@ -66,17 +62,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onStart() {
         Log.v(Tag, "onStart()");
         super.onStart();
-    }
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        Log.v(Tag, "onCreate()");
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
-        BeanManager.getInstance().setScanTimeout(10);
-
-        setupListView();
 
         if (ContextCompat.checkSelfPermission(
                 this,
@@ -105,24 +90,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private void setupListView()
-    {
-        mListView = (ListView)findViewById(R.id.list);
-        mBeans = new ArrayList<>();
-        mAdapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, mBeans);
-        mListView.setAdapter(mAdapter);
-
-        mListView.setOnItemClickListener(new AdapterView.OnItemClickListener()
-        {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                Intent intent = new Intent(MainActivity.this, DetailActivity.class);
-                intent.putExtra(Intent.EXTRA_TEXT, mBeans.get(position).getDevice().getAddress());
-                startActivity(intent);
-            }
-        });
-    }
-
     @Override
     protected void onResume() {
         Log.v(Tag, "onResume()");
@@ -144,13 +111,11 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    private Subscription mDiscoverySubscription;
-
     private void StartDiscovery()
     {
         Log.v(Tag, "StartDiscovery()");
-        mDiscoveryCompleted = false;
-        mDiscoverySubscription = BeanDiscoveryListenerWrapper()
+
+        Subscription subscription = BeanConnect.DiscoverBeans()
                 .distinct(bean -> bean.getDevice().getAddress())
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
@@ -158,24 +123,11 @@ public class MainActivity extends AppCompatActivity {
                     Log.v(Tag, "Bean found: " + bean.describe());
                     mBeans.add(bean);
                     mAdapter.notifyDataSetChanged();
-                    // ShowBeanInfo(bean);
                 });
-        mCompositeSubscription.add(mDiscoverySubscription);
+
+        mCompositeSubscription.add(subscription);
     }
     
-    private void StopDiscovery()
-    {
-        if (!mDiscoveryCompleted) {
-            BeanManager.getInstance().cancelDiscovery();
-        }
-
-        if (mDiscoverySubscription != null)
-        {
-            mDiscoverySubscription.unsubscribe();
-            mDiscoverySubscription = null;
-        }
-    }
-
     @Override
     protected void onPause() {
         Log.v(Tag, "onPause()");
@@ -185,7 +137,6 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         Log.v(Tag, "onStop()");
-        StopDiscovery();
         mCompositeSubscription.unsubscribe();
         super.onStop();
     }

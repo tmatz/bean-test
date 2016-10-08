@@ -10,6 +10,7 @@ import com.punchthrough.bean.sdk.BeanManager;
 import com.punchthrough.bean.sdk.message.BeanError;
 import com.punchthrough.bean.sdk.message.ScratchBank;
 
+import rx.AsyncEmitter;
 import rx.Observable;
 import rx.Subscriber;
 import rx.Subscription;
@@ -19,35 +20,31 @@ public class BeanConnect {
 
     private Subscription mDiscoverySubscription;
 
-    private static class MyBeanDiscoveryListener implements BeanDiscoveryListener
-    {
-        private Subscriber<? super Bean> observer;
-
-        public void setObserver(Subscriber<? super Bean> subscriber) {
-            observer = subscriber;
-        }
-
-        @Override
-        public void onBeanDiscovered(Bean bean, int rssi) {
-            Log.v(Tag, "BeanDiscoveryListener.onBeanDiscovered()");
-            observer.onNext(bean);
-        }
-
-        @Override
-        public void onDiscoveryComplete() {
-            Log.v(Tag, "BeanDiscoveryListener.onDiscoveryComplete()");
-            observer.onCompleted();
-        }
-    }
-
     public static Observable<Bean> DiscoverBeans() {
-        return Observable.using(
-                () -> new MyBeanDiscoveryListener(),
-                (listener) -> Observable.create((subscriber) -> {
-                    listener.setObserver(subscriber);
+        Observable<Bean> observable = Observable.fromEmitter(
+                emitter -> {
+                    BeanDiscoveryListener listener = new BeanDiscoveryListener() {
+                        @Override
+                        public void onBeanDiscovered(Bean bean, int rssi) {
+                            Log.v(Tag, "BeanDiscoveryListener.onBeanDiscovered()");
+                            emitter.onNext(bean);
+                        }
+
+                        @Override
+                        public void onDiscoveryComplete() {
+                            Log.v(Tag, "BeanDiscoveryListener.onDiscoveryComplete()");
+                            emitter.onCompleted();
+                        }
+                    };
+
+                    emitter.setCancellation(() -> {
+                        BeanManager.getInstance().cancelDiscovery();
+                    });
+
                     BeanManager.getInstance().startDiscovery(listener);
-                }),
-                (listener) -> BeanManager.getInstance().startDiscovery(listener));
+                }, AsyncEmitter.BackpressureMode.BUFFER);
+
+        return observable.publish().refCount();
     }
 
     public static class BeanEvent {
