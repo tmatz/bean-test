@@ -16,28 +16,40 @@ import rx.Observable;
 public class BeanConnect {
     private static final String Tag = BeanConnect.class.getSimpleName();
 
+    private static class MyBeanDiscoveryListener implements BeanDiscoveryListener {
+        private final AsyncEmitter<Bean> mEmitter;
+        private boolean mIsCompleted = false;
+
+        public MyBeanDiscoveryListener(AsyncEmitter<Bean> emitter) {
+            mEmitter = emitter;
+        }
+
+        @Override
+        public void onBeanDiscovered(Bean bean, int rssi) {
+            Log.v(Tag, "BeanDiscoveryListener.onBeanDiscovered()");
+            mEmitter.onNext(bean);
+        }
+
+        @Override
+        public void onDiscoveryComplete() {
+            Log.v(Tag, "BeanDiscoveryListener.onDiscoveryComplete()");
+            mIsCompleted = true;
+            mEmitter.onCompleted();
+        }
+
+        public void cancel() {
+            if (!mIsCompleted) {
+                BeanManager.getInstance().cancelDiscovery();
+            }
+        }
+    }
+
     public static Observable<Bean> DiscoverBeans() {
         return Observable.fromEmitter(
                 emitter -> {
-                    BeanDiscoveryListener listener = new BeanDiscoveryListener() {
-                        @Override
-                        public void onBeanDiscovered(Bean bean, int rssi) {
-                            Log.v(Tag, "BeanDiscoveryListener.onBeanDiscovered()");
-                            emitter.onNext(bean);
-                        }
-
-                        @Override
-                        public void onDiscoveryComplete() {
-                            Log.v(Tag, "BeanDiscoveryListener.onDiscoveryComplete()");
-                            emitter.onCompleted();
-                        }
-                    };
-
-                    emitter.setCancellation(() -> {
-                        BeanManager.getInstance().cancelDiscovery();
-                    });
-
+                    MyBeanDiscoveryListener listener = new MyBeanDiscoveryListener(emitter);
                     BeanManager.getInstance().startDiscovery(listener);
+                    emitter.setCancellation(() -> listener.cancel());
                 }, AsyncEmitter.BackpressureMode.BUFFER);
     }
 

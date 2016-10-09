@@ -13,7 +13,6 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import com.punchthrough.bean.sdk.Bean;
-import com.punchthrough.bean.sdk.BeanManager;
 import com.punchthrough.bean.sdk.message.Callback;
 import com.punchthrough.bean.sdk.message.UploadProgress;
 import com.punchthrough.bean.sdk.upload.SketchHex;
@@ -21,7 +20,7 @@ import com.punchthrough.bean.sdk.upload.SketchHex;
 import org.apache.commons.io.IOUtils;
 
 import java.io.InputStream;
-import java.util.Collection;
+import java.util.concurrent.TimeUnit;
 
 import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
@@ -57,15 +56,7 @@ public class DetailActivity extends AppCompatActivity {
 
         Intent intent = getIntent();
         if (intent != null) {
-            String beanAddress = intent.getStringExtra(Intent.EXTRA_TEXT);
-            Log.d(Tag, "bean address: " + beanAddress);
-            Collection<Bean> beans = BeanManager.getInstance().getBeans();
-            for (Bean bean : beans) {
-                if (bean.getDevice().getAddress().equals(beanAddress)) {
-                    mBean = bean;
-                    break;
-                }
-            }
+            mBean = intent.getParcelableExtra("Bean");
         }
 
         if (mBean == null) {
@@ -118,6 +109,7 @@ public class DetailActivity extends AppCompatActivity {
         }
 
         mConnectionSubscription = BeanConnect.ConnectToBean(this, bean)
+                .timeout(10, TimeUnit.SECONDS)
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
                         event -> {
@@ -137,6 +129,7 @@ public class DetailActivity extends AppCompatActivity {
                             }
                         },
                         error -> {
+                            Log.d(Tag, "connection failed: " + error.getMessage());
                             mTextViewBeanName.setBackgroundColor(Color.RED);
                         },
                         () -> {

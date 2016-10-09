@@ -15,13 +15,10 @@ import android.widget.ArrayAdapter;
 import android.widget.ListView;
 
 import com.punchthrough.bean.sdk.Bean;
-import com.punchthrough.bean.sdk.BeanListener;
-import com.punchthrough.bean.sdk.message.BeanError;
-import com.punchthrough.bean.sdk.message.ScratchBank;
+import com.punchthrough.bean.sdk.BeanManager;
 
 import java.util.ArrayList;
 
-import rx.Observable;
 import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
 import rx.subscriptions.CompositeSubscription;
@@ -42,7 +39,7 @@ public class MainActivity extends AppCompatActivity {
         Log.v(Tag, "onCreate()");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        // BeanManager.getInstance().setScanTimeout(10);
+        BeanManager.getInstance().setScanTimeout(10);
         setupListView();
     }
 
@@ -55,7 +52,7 @@ public class MainActivity extends AppCompatActivity {
 
         mListView.setOnItemClickListener((parent, view, position, id) -> {
             Intent intent = new Intent(MainActivity.this, DetailActivity.class);
-            intent.putExtra(Intent.EXTRA_TEXT, mBeans.get(position).getDevice().getAddress());
+            intent.putExtra("Bean", mBeans.get(position));
             startActivity(intent);
         });
     }
@@ -151,6 +148,7 @@ public class MainActivity extends AppCompatActivity {
                     Log.v(Tag, "Bean found: " + bean.describe());
                     mBeans.add(bean);
                     mAdapter.notifyDataSetChanged();
+                    mDiscoverySubscription.unsubscribe();
                 });
 
         mCompositeSubscription.add(mDiscoverySubscription);
@@ -173,211 +171,5 @@ public class MainActivity extends AppCompatActivity {
     protected void onDestroy() {
         Log.v(Tag, "onDestroy()");
         super.onDestroy();
-    }
-
-    private static class BeanEvent {
-        public static final int INFO_CONNECTED = 1;
-        public static final int INFO_SERIAL_MESSAGE_RECEIVED = 2;
-        public static final int INFO_SCRATCH_VALUE_CHANGED = 3;
-        public static final int INFO_READ_REMOTE_RSSI = 4;
-
-        private int mEventType;
-        private Bean mBean;
-        private byte[] mData;
-        private ScratchBank mBank;
-
-        private int mRssi;
-
-        private BeanEvent() {
-        }
-        
-        public int getEventType() {
-            return mEventType;
-        }
-
-        public Bean getBean() {
-            return mBean;
-        }
-
-        public byte[] getData() {
-            return mData;
-        }
-
-        public ScratchBank getBank() {
-            return mBank;
-        }
-
-        public byte[] getVaue() {
-            return mData;
-        }
-
-        public int getRssi() {
-            return mRssi;
-        }
-        
-        public static BeanEvent OnConnected(Bean bean) {
-            BeanEvent event = new BeanEvent();
-            event.mEventType = INFO_CONNECTED;
-            event.mBean = bean;
-            return event;
-        }
-
-        public static BeanEvent OnSerialMessageReceived(Bean bean, byte[] data) {
-            BeanEvent event = new BeanEvent();
-            event.mEventType = INFO_SERIAL_MESSAGE_RECEIVED;
-            event.mBean = bean;
-            event.mData = data;
-            return event;
-        }
-        
-        public static BeanEvent OnScratchValueChanged(Bean bean, ScratchBank bank, byte[] value) {
-            BeanEvent event = new BeanEvent();
-            event.mEventType = INFO_SCRATCH_VALUE_CHANGED;
-            event.mBean = bean;
-            event.mBank = bank;
-            event.mData = value;
-            return event;
-        }
-        
-        public static BeanEvent OnReadRemoteRssi(Bean bean, int rssi) {
-            BeanEvent event = new BeanEvent();
-            event.mEventType = INFO_READ_REMOTE_RSSI;
-            event.mBean = bean;
-            event.mRssi = rssi;
-            return event;
-        }
-    }
-    
-    private class BeanConnectionFailedException extends Throwable {
-        private final Bean mBean;
-
-        public BeanConnectionFailedException(Bean bean) {
-            mBean = bean;
-       }
-
-        public Bean getBean() {
-            return mBean;
-        }
-    }
-
-    private class BeanErrorException extends Throwable {
-
-        private final Bean mBean;
-        private final BeanError mError;
-
-        public BeanErrorException(Bean bean, BeanError error) {
-            mBean = bean;
-            mError = error;
-        }
-
-        public Bean getBean() {
-            return mBean;
-        }
-
-        public BeanError getError() {
-            return mError;
-        }
-    }
-
-    private Observable<BeanEvent> ConnectToBean(final Bean bean)
-    {
-        Log.i(Tag, "MainActivity.ConnectToBean()");
-        return Observable.create(observer ->
-            {
-                Log.i(Tag, "start connect to bean...");
-                BeanListener listener = new BeanListener() {
-                    @Override
-                    public void onConnected() {
-                        Log.i(Tag, "BeanListener.onConnected()");
-                        observer.onNext(BeanEvent.OnConnected(bean));
-                    }
-
-                    @Override
-                    public void onConnectionFailed() {
-                        Log.i(Tag, "BeanListener.onConnectionFailed()");
-                        observer.onError(new BeanConnectionFailedException(bean));
-                    }
-
-                    @Override
-                    public void onDisconnected() {
-                        Log.i(Tag, "BeanListener.onDiscconnected()");
-                        observer.onCompleted();
-                    }
-
-                    @Override
-                    public void onSerialMessageReceived(byte[] data) {
-                        Log.i(Tag, "BeanListener.onSerialMessageReceived()");
-                        observer.onNext(BeanEvent.OnSerialMessageReceived(bean, data));
-                    }
-
-                    @Override
-                    public void onScratchValueChanged(ScratchBank bank, byte[] value) {
-                        Log.i(Tag, "BeanListener.onScratchValueChanged()");
-                        observer.onNext(BeanEvent.OnScratchValueChanged(bean, bank, value));
-                    }
-
-                    @Override
-                    public void onError(BeanError error) {
-                        Log.i(Tag, "BeanListener.onError()");
-                        observer.onError(new BeanErrorException(bean, error));
-                    }
-
-                    @Override
-                    public void onReadRemoteRssi(int rssi) {
-                        Log.i(Tag, "BeanListener.onReadRemoteRssi()");
-                        observer.onNext(BeanEvent.OnReadRemoteRssi(bean, rssi));
-                    }
-                };
-
-                bean.connect(this, listener);
-            });
-    }
-
-    private void ShowBeanInfo(Bean bean)
-    {
-        Observable<BeanEvent> eventObservable = ConnectToBean(bean);
-        Subscription subscription = eventObservable
-                .subscribeOn(AndroidSchedulers.mainThread())
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(event ->
-                        {
-                            Log.i(Tag, "get BeanEvent");
-                            switch (event.getEventType())
-                            {
-                                case BeanEvent.INFO_CONNECTED:
-                                    Log.i(Tag, "BeanListener.onConnected()");
-                                    break;
-
-                                case BeanEvent.INFO_SERIAL_MESSAGE_RECEIVED:
-                                    Log.i(Tag, "BeanListener.onSerialMessageReceived()");
-                                    Log.i(Tag, new String(event.getData()));
-                                    break;
-
-                                case BeanEvent.INFO_SCRATCH_VALUE_CHANGED:
-                                    Log.i(Tag, "BeanListener.onScratchValueChanged()");
-                                    Log.i(Tag, event.getBank().name());
-                                    break;
-
-                                case BeanEvent.INFO_READ_REMOTE_RSSI:
-                                    Log.i(Tag, "BeanListener.onReadRemoteRssi()");
-                                    Log.i(Tag, String.valueOf(event.getRssi()));
-                                    break;
-                            }
-                        },
-                        ex ->
-                        {
-                            if (ex instanceof BeanConnectionFailedException) {
-                                Log.i(Tag, "BeanListener.onConnectionFailed()");
-                            } else if (ex instanceof BeanErrorException) {
-                                Log.i(Tag, "BeanListener.onError()");
-                                Log.i(Tag, ((BeanErrorException) ex).getError().name());
-                            }
-                        },
-                        () ->
-                        {
-                            Log.i(Tag, "BeanListener.onCompleted()");
-                        });
-
-        mCompositeSubscription.add(subscription);
     }
 }
