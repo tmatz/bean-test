@@ -117,7 +117,7 @@ public class DetailActivity extends AppCompatActivity {
             mConnectionSubscription = null;
         }
 
-        mConnectionSubscription = BeanConnect.ConnectToBean(getApplicationContext(), bean)
+        mConnectionSubscription = BeanConnect.ConnectToBean(this, bean)
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
                         event -> {
