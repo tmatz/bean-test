@@ -13,14 +13,11 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import com.punchthrough.bean.sdk.Bean;
-import com.punchthrough.bean.sdk.message.Callback;
-import com.punchthrough.bean.sdk.message.UploadProgress;
 import com.punchthrough.bean.sdk.upload.SketchHex;
 
 import org.apache.commons.io.IOUtils;
 
 import java.io.InputStream;
-import java.util.concurrent.TimeUnit;
 
 import rx.Subscription;
 import rx.android.schedulers.AndroidSchedulers;
@@ -71,31 +68,24 @@ public class DetailActivity extends AppCompatActivity {
             Log.d(Tag, "Bean name: " + mBean.getDevice().getName());
             mTextViewBeanName.setText(mBean.getDevice().getName());
 
-            mButtonUploadSketch.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    try {
-                        InputStream inputStream = getResources().openRawResource(R.raw.sleep_ino_hex);
-                        String hex = IOUtils.toString(inputStream, "ASCII");
-                        SketchHex sketchHex = SketchHex.create("Sleep", hex);
-                        Callback<UploadProgress> progress = new Callback<UploadProgress>() {
-                            @Override
-                            public void onResult(UploadProgress result) {
-                                Log.i(Tag, "Upload sketch progress. (" + result.blocksSent() + "/" + result.totalBlocks());
-                            }
-                        };
-                        Runnable onComplete = new Runnable() {
-                            @Override
-                            public void run() {
-                                Log.i(Tag, "Upload sketch finished.");
-                            }
-                        };
-                        mBean.programWithSketch(sketchHex, progress, onComplete);
-                    } catch (Throwable e) {
-                        Log.e(Tag, e.getMessage());
-                    }
-                }
-            });
+            mButtonUploadSketch.setOnClickListener(
+                    view -> {
+                        try {
+                            InputStream inputStream = getResources().openRawResource(R.raw.sleep_ino_hex);
+                            String hex = IOUtils.toString(inputStream, "ASCII");
+                            SketchHex sketchHex = SketchHex.create("Sleep", hex);
+                            mBean.programWithSketch(
+                                    sketchHex,
+                                    progress -> {
+                                        Log.i(Tag, "Upload sketch progress. (" + progress.blocksSent() + "/" + progress.totalBlocks());
+                                    },
+                                    () -> {
+                                        Log.i(Tag, "Upload sketch finished.");
+                                    });
+                        } catch (Throwable e) {
+                            Log.e(Tag, e.getMessage());
+                        }
+                    });
 
             StartConnection(mBean);
         }
@@ -108,8 +98,8 @@ public class DetailActivity extends AppCompatActivity {
             mConnectionSubscription = null;
         }
 
-        mConnectionSubscription = BeanConnect.ConnectToBean(this, bean)
-                .timeout(10, TimeUnit.SECONDS)
+        mConnectionSubscription = BeanConnect.ConnectToBean(getApplicationContext(), bean)
+                // .timeout(10, TimeUnit.SECONDS)
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
                         event -> {
@@ -129,7 +119,7 @@ public class DetailActivity extends AppCompatActivity {
                             }
                         },
                         error -> {
-                            Log.d(Tag, "connection failed: " + error.getMessage());
+                            Log.d(Tag, "connection failed: " + error.toString());
                             mTextViewBeanName.setBackgroundColor(Color.RED);
                         },
                         () -> {

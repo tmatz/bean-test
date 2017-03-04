@@ -130,6 +130,7 @@ public class BeanConnect {
         private final Bean mBean;
 
         public BeanConnectionFailedException(Bean bean) {
+            super("Connection Failed.");
             mBean = bean;
        }
 
@@ -143,7 +144,9 @@ public class BeanConnect {
         private final Bean mBean;
         private final BeanError mError;
 
-        public BeanErrorException(Bean bean, BeanError error) {
+        public BeanErrorException(Bean bean, BeanError error)
+        {
+            super(error.toString());
             mBean = bean;
             mError = error;
         }
@@ -194,7 +197,7 @@ public class BeanConnect {
 
                         @Override
                         public void onError(BeanError error) {
-                            Log.v(Tag, "BeanListener.onError()");
+                            Log.v(Tag, "BeanListener.onError()" + error.toString());
                             emitter.onError(new BeanErrorException(bean, error));
                         }
 
